@@ -3,5 +3,6 @@
   "outputDirectory": "dist",
   "framework": "astro",
   "installCommand": "npm install",
-  "devCommand": "npm run dev"
+  "devCommand": "npm run dev",
+  "rootDirectory": "."
 }
