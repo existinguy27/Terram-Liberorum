@@ -1,0 +1,18 @@
+---
+import GMDashboard from '../components/GMDashboard';
+import '../styles/global.css';
+---
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" href="/favicon.ico" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="generator" content={Astro.generator} />
+    <title>GM Dashboard — Terram Liberorum</title>
+  </head>
+  <body class="min-h-screen bg-[#1a1a2e] text-white">
+    <GMDashboard client:load />
+  </body>
+</html>
