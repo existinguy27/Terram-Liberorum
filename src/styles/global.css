@@ -1,1 +1,22 @@
 @import "tailwindcss";
+
+@layer utilities {
+  .fade-container::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 2.5rem;
+    background: linear-gradient(to bottom, transparent, #0d0d1a);
+    pointer-events: none;
+  }
+
+  .fade-container {
+    position: relative;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+}

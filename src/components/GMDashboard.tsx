@@ -8,7 +8,14 @@ import {
 const PIN = '8472';
 const STORAGE_KEY = 'gm-session';
 
-type TabName = 'mail' | 'locations' | 'quests' | 'npcs' | 'relics' | 'lore' | 'towns';
+const PREVIEW_PLAYERS = [
+  { id: 'kael', name: 'Kael', color: '#ff8c00' },
+  { id: 'hannya', name: 'Hannya', color: '#800080' },
+  { id: 'silas', name: 'Silas', color: '#c0c0c0' },
+  { id: 'ryuin', name: 'Ryuin', color: '#2ecc71' },
+] as const;
+
+type TabName = 'mail' | 'locations' | 'quests' | 'npcs' | 'relics' | 'lore' | 'towns' | 'preview';
 
 const TABS: { id: TabName; label: string }[] = [
   { id: 'mail', label: 'Mail' },
@@ -18,6 +25,7 @@ const TABS: { id: TabName; label: string }[] = [
   { id: 'relics', label: 'Relics' },
   { id: 'lore', label: 'Lore' },
   { id: 'towns', label: 'Towns' },
+  { id: 'preview', label: 'Preview' },
 ];
 
 type FormState = {
@@ -28,6 +36,7 @@ type FormState = {
   relics: Partial<Relic>;
   lore: Partial<Lore>;
   towns: Partial<Town>;
+  preview: Record<string, never>;
 };
 
 const initialFormState: FormState = {
@@ -38,6 +47,7 @@ const initialFormState: FormState = {
   relics: { name: '', type: 'relic', status: '', description: '', visible: true },
   lore: { title: '', category: '', content: '', visible: true },
   towns: { name: '', region: '', description: '', services: '', notable_npcs: '', current_rumors: '', visible: true },
+  preview: {},
 };
 
 export const GMDashboard: React.FC = () => {
@@ -418,6 +428,38 @@ export const GMDashboard: React.FC = () => {
                 </div>
               </>
             )}
+            {tab === 'preview' && (
+              <>
+                <div className="text-center py-8">
+                  <p className="text-gray-400 mb-6">Click a player button below to open their view in a new tab for previewing.</p>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    {PREVIEW_PLAYERS.map(p => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => window.open(`/?preview=${p.id}`, '_blank')}
+                        className="py-6 px-4 rounded-xl font-bold text-lg transition-all duration-200"
+                        style={{
+                          backgroundColor: '#16213e',
+                          border: `2px solid ${p.color}40`,
+                          color: p.color,
+                        }}
+                        onMouseOver={(e) => {
+                          e.currentTarget.style.backgroundColor = `${p.color}20`;
+                          e.currentTarget.style.borderColor = p.color;
+                        }}
+                        onMouseOut={(e) => {
+                          e.currentTarget.style.backgroundColor = '#16213e';
+                          e.currentTarget.style.borderColor = `${p.color}40`;
+                        }}
+                      >
+                        {p.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </>
+            )}
             <div className="flex gap-3 pt-4">
               <button type="button" onClick={() => { setShowForm(null); setEditingId(null); }} className="flex-1 py-2 bg-gray-600 hover:bg-gray-500 rounded">Cancel</button>
               <button type="submit" className="flex-1 py-2 bg-[#e94560] hover:bg-[#d63650] rounded font-semibold">{isEditing ? 'Update' : 'Create'}</button>
@@ -469,10 +511,20 @@ export const GMDashboard: React.FC = () => {
         { key: 'name', label: 'Name' },
         { key: 'region', label: 'Region' },
         { key: 'visible', label: 'Visible' }
-      ]
+      ],
+      preview: []
     };
 
     if (loading) return <div className="text-center py-8 text-gray-400">Loading...</div>;
+
+    // Preview tab has no table - handled by renderForm
+    if (activeTab === 'preview') {
+      return (
+        <div className="text-center py-16 text-gray-500">
+          <p className="text-lg">Use the "Add New" button to open the preview panel.</p>
+        </div>
+      );
+    }
 
     return (
       <div className="overflow-x-auto">
