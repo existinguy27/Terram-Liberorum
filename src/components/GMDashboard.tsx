@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { GMMapEditor } from './GMMapEditor';
 import {
   fetchPlayers, fetchMail, fetchLocations, fetchQuests, fetchNPCs, fetchRelics, fetchLore, fetchTowns,
   insertOne, updateOne, deleteOne, toggleVisible,
@@ -15,7 +16,7 @@ const PREVIEW_PLAYERS = [
   { id: 'ryuin', name: 'Ryuin', color: '#2ecc71' },
 ] as const;
 
-type TabName = 'mail' | 'locations' | 'quests' | 'npcs' | 'relics' | 'lore' | 'towns' | 'preview';
+type TabName = 'mail' | 'locations' | 'quests' | 'npcs' | 'relics' | 'lore' | 'towns' | 'preview' | 'map-editor';
 
 const TABS: { id: TabName; label: string }[] = [
   { id: 'mail', label: 'Mail' },
@@ -26,6 +27,7 @@ const TABS: { id: TabName; label: string }[] = [
   { id: 'lore', label: 'Lore' },
   { id: 'towns', label: 'Towns' },
   { id: 'preview', label: 'Preview' },
+  { id: 'map-editor', label: 'Map Editor' },
 ];
 
 type FormState = {
@@ -37,6 +39,7 @@ type FormState = {
   lore: Partial<Lore>;
   towns: Partial<Town>;
   preview: Record<string, never>;
+  'map-editor': Record<string, never>;
 };
 
 const initialFormState: FormState = {
@@ -48,6 +51,7 @@ const initialFormState: FormState = {
   lore: { title: '', category: '', content: '', visible: true },
   towns: { name: '', region: '', description: '', services: '', notable_npcs: '', current_rumors: '', visible: true },
   preview: {},
+  'map-editor': {},
 };
 
 export const GMDashboard: React.FC = () => {
@@ -460,6 +464,11 @@ export const GMDashboard: React.FC = () => {
                 </div>
               </>
             )}
+            {tab === 'map-editor' && (
+              <>
+                <GMMapEditor />
+              </>
+            )}
             <div className="flex gap-3 pt-4">
               <button type="button" onClick={() => { setShowForm(null); setEditingId(null); }} className="flex-1 py-2 bg-gray-600 hover:bg-gray-500 rounded">Cancel</button>
               <button type="submit" className="flex-1 py-2 bg-[#e94560] hover:bg-[#d63650] rounded font-semibold">{isEditing ? 'Update' : 'Create'}</button>
@@ -512,16 +521,17 @@ export const GMDashboard: React.FC = () => {
         { key: 'region', label: 'Region' },
         { key: 'visible', label: 'Visible' }
       ],
-      preview: []
+      preview: [],
+      'map-editor': []
     };
 
     if (loading) return <div className="text-center py-8 text-gray-400">Loading...</div>;
 
-    // Preview tab has no table - handled by renderForm
-    if (activeTab === 'preview') {
+    // Preview tab and Map Editor tab have no table - handled by renderForm
+    if (activeTab === 'preview' || activeTab === 'map-editor') {
       return (
         <div className="text-center py-16 text-gray-500">
-          <p className="text-lg">Use the "Add New" button to open the preview panel.</p>
+          <p className="text-lg">Use the "Add New" button to open the {activeTab === 'preview' ? 'preview panel' : 'map editor'}.</p>
         </div>
       );
     }

@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { PLAYERS, type PlayerId, getRegisteredPlayerId, isGmOverride, getPreviewPlayerId, getPlayerColor } from '../lib/players';
-import { fetchLocations, updateOne, insertOne, type Location } from '../lib/api';
+import { fetchLocations, type Location } from '../lib/api';
 
 interface Ecozone {
   name: string;
@@ -60,55 +60,14 @@ export const MoraviaMap: React.FC = () => {
   const [playerColor, setPlayerColor] = useState('#ffffff');
   const [isPreview, setIsPreview] = useState(false);
   const [selectedLocation, setSelectedLocation] = useState<Location | null>(null);
-  const [isGmEdit, setIsGmEdit] = useState(false);
-
-  // GM Edit state
-  const [gmMode, setGmMode] = useState<'view' | 'place' | 'edit'>('view');
-  const [draggingVertex, setDraggingVertex] = useState<{ polygon: string; index: number } | null>(null);
-  const [polygonCoords, setPolygonCoords] = useState<{
-    outline: [number, number][];
-    ecozones: Record<string, [number, number][]>;
-  }>({
-    outline: moraviaOutline,
-    ecozones: ecozones.reduce((acc, z) => ({ ...acc, [z.name]: z.coords }), {}),
-  });
-  const [markerPositions, setMarkerPositions] = useState<Record<string, { x: number; y: number }>>({});
   const [locationData, setLocationData] = useState<Location[]>([]);
-  const [newMarkerForm, setNewMarkerForm] = useState<{
-    active: boolean;
-    lat: number;
-    lng: number;
-    name: string;
-    brief_description: string;
-    full_description: string;
-    visible: boolean;
-  }>({ active: false, lat: 0, lng: 0, name: '', brief_description: '', full_description: '', visible: true });
-  const [unsavedChanges, setUnsavedChanges] = useState<Set<string>>(new Set());
-  const [showVertexHandles, setShowVertexHandles] = useState<string | null>(null);
+  const [markerPositions, setMarkerPositions] = useState<Record<string, { x: number; y: number }>>({});
 
   // Scale percentage to canvas coordinates within Moravia bounds
   const percentToCanvas = useCallback((xPercent: number, yPercent: number): [number, number] => {
     const x = OUTLINE_MIN_X + (xPercent / 100) * (OUTLINE_MAX_X - OUTLINE_MIN_X);
     const y = OUTLINE_MIN_Y + (yPercent / 100) * (OUTLINE_MAX_Y - OUTLINE_MIN_Y);
     return [y, x]; // Leaflet uses [lat, lng] = [y, x]
-  }, []);
-
-  // Convert canvas coordinates back to percentages
-  const canvasToPercent = useCallback((canvasX: number, canvasY: number): { xPercent: number; yPercent: number } => {
-    const xPercent = ((canvasX - OUTLINE_MIN_X) / (OUTLINE_MAX_X - OUTLINE_MIN_X)) * 100;
-    const yPercent = ((canvasY - OUTLINE_MIN_Y) / (OUTLINE_MAX_Y - OUTLINE_MIN_Y)) * 100;
-    return {
-      xPercent: Math.max(0, Math.min(100, Math.round(xPercent * 10) / 10)),
-      yPercent: Math.max(0, Math.min(100, Math.round(yPercent * 10) / 10)),
-    };
-  }, []);
-
-  // Check for GM edit mode
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    if (params.get('gmedit') === 'true' && isGmOverride()) {
-      setIsGmEdit(true);
-    }
   }, []);
 
   useEffect(() => {
@@ -194,38 +153,23 @@ export const MoraviaMap: React.FC = () => {
         weight: 0,
       }).addTo(map);
 
-      // Store layer references for GM edit
-      const layers: {
-        outline: any;
-        ecozones: Record<string, any>;
-        markers: Record<string, { marker: any; label: any }>;
-        vertexHandles: Record<string, any[]>;
-      } = {
-        outline: null,
-        ecozones: {},
-        markers: {},
-        vertexHandles: {},
-      };
-
       // Moravia continent outline
-      const outlinePolygon = L.polygon(polygonCoords.outline, {
+      L.polygon(moraviaOutline, {
         color: '#4a9a6a',
         fillColor: '#1a3a2a',
         fillOpacity: 0.8,
         weight: 2,
       }).addTo(map);
-      layers.outline = outlinePolygon;
 
       // Ecozone layers
       ecozones.forEach((zone) => {
-        const ecozonePolygon = L.polygon(polygonCoords.ecozones[zone.name] || zone.coords, {
+        L.polygon(zone.coords, {
           color: zone.fillColor,
           fillColor: zone.fillColor,
           fillOpacity: 0.4,
           weight: 1,
           dashArray: '5, 5',
         }).addTo(map);
-        layers.ecozones[zone.name] = ecozonePolygon;
 
         // Ecozone label
         L.marker(zone.center, {
@@ -339,135 +283,18 @@ export const MoraviaMap: React.FC = () => {
           interactive: false,
         }).addTo(map);
 
-        layers.markers[loc.id] = { marker, label };
-
-        if (isGmEdit) {
-          marker.dragging.enable();
-
-          // Show tooltip with coordinates while dragging
-          marker.on('dragstart', () => {
-            marker.bindTooltip(
-              `x: ${canvasToPercent(pos.x, pos.y).xPercent}%, y: ${canvasToPercent(pos.x, pos.y).yPercent}%`,
-              { permanent: true, direction: 'top', offset: [0, -10] }
-            ).openTooltip();
-          });
-
-          marker.on('drag', (e: any) => {
-            const latlng = e.target.getLatLng();
-            const { xPercent, yPercent } = canvasToPercent(latlng.lng, latlng.lat);
-            marker.setTooltipContent(`x: ${xPercent}%, y: ${yPercent}%`);
-
-            setMarkerPositions(prev => ({
-              ...prev,
-              [loc.id]: { x: latlng.lng, y: latlng.lat }
-            }));
-
-            // Update label position
-            label.setLatLng([latlng.lat + 12, latlng.lng]);
-          });
-
-          marker.on('dragend', (e: any) => {
-            const latlng = e.target.getLatLng();
-            const { xPercent, yPercent } = canvasToPercent(latlng.lng, latlng.lat);
-
-            marker.unbindTooltip();
-
-            setMarkerPositions(prev => ({
-              ...prev,
-              [loc.id]: { x: latlng.lng, y: latlng.lat }
-            }));
-
-            setUnsavedChanges(prev => new Set([...prev, loc.id]));
-
-            label.setLatLng([latlng.lat + 12, latlng.lng]);
-          });
-        }
-
         marker.on('click', () => {
-          if (!isGmEdit) {
-            setSelectedLocation(loc);
-          }
+          setSelectedLocation(loc);
         });
 
         marker.on('mouseover', () => {
-          if (!isGmEdit) {
-            marker.setStyle({ radius: 10, fillColor: playerColor, color: '#ffffff' });
-          }
+          marker.setStyle({ radius: 10, fillColor: playerColor, color: '#ffffff' });
         });
 
         marker.on('mouseout', () => {
-          if (!isGmEdit) {
-            marker.setStyle({ radius: 8, fillColor: '#ffffff', color: playerColor });
-          }
+          marker.setStyle({ radius: 8, fillColor: '#ffffff', color: playerColor });
         });
       });
-
-      // Add vertex handles for polygons in GM edit mode
-      const addVertexHandles = (polygonName: string, coords: [number, number][], layer: any) => {
-        const handles: any[] = [];
-        coords.forEach((coord, index) => {
-          const handle = L.circleMarker([coord[0], coord[1]], {
-            radius: 6,
-            fillColor: '#e94560',
-            color: '#ffffff',
-            weight: 2,
-            fillOpacity: 1,
-            className: 'vertex-handle',
-            interactive: isGmEdit && showVertexHandles === polygonName,
-          }).addTo(map);
-
-          if (isGmEdit && showVertexHandles === polygonName) {
-            handle.dragging.enable();
-            handle.on('drag', (e: any) => {
-              const latlng = e.target.getLatLng();
-              const newCoords = [...coords];
-              newCoords[index] = [latlng.lat, latlng.lng];
-
-              if (polygonName === 'outline') {
-                setPolygonCoords(prev => ({ ...prev, outline: newCoords }));
-                layer.setLatLngs(newCoords);
-              } else {
-                setPolygonCoords(prev => ({
-                  ...prev,
-                  ecozones: { ...prev.ecozones, [polygonName]: newCoords }
-                }));
-                layer.setLatLngs(newCoords);
-              }
-            });
-          }
-
-          handles.push(handle);
-        });
-        layers.vertexHandles[polygonName] = handles;
-      };
-
-      if (isGmEdit) {
-        addVertexHandles('outline', polygonCoords.outline, outlinePolygon);
-        Object.keys(polygonCoords.ecozones).forEach(name => {
-          addVertexHandles(name, polygonCoords.ecozones[name], layers.ecozones[name]);
-        });
-      }
-
-      // Handle map click for placing new markers
-      if (isGmEdit) {
-        map.on('click', (e: any) => {
-          if (gmMode === 'place' && !newMarkerForm.active) {
-            const latlng = e.latlng;
-            setNewMarkerForm({
-              active: true,
-              lat: latlng.lat,
-              lng: latlng.lng,
-              name: '',
-              brief_description: '',
-              full_description: '',
-              visible: true,
-            });
-          }
-        });
-      }
-
-      // Store layers ref for cleanup
-      (window as any).__moraviaLayers = layers;
 
     };
 
@@ -478,19 +305,8 @@ export const MoraviaMap: React.FC = () => {
         mapInstanceRef.current.remove();
         mapInstanceRef.current = null;
       }
-      // Clean up vertex handles
-      const layers = (window as any).__moraviaLayers;
-      if (layers) {
-        Object.values(layers.vertexHandles).flat().forEach((h: any) => mapInstanceRef.current?.removeLayer(h));
-      }
     };
-  }, [playerColor, isGmEdit, gmMode, showVertexHandles, polygonCoords, markerPositions, locationData, newMarkerForm.active, canvasToPercent]);
-
-  // Update vertex handles when polygonCoords change
-  useEffect(() => {
-    if (!mapInstanceRef.current || !isGmEdit) return;
-    // Vertex handles are recreated when showVertexHandles changes
-  }, [polygonCoords, isGmEdit, showVertexHandles]);
+  }, [playerColor, locationData, markerPositions]);
 
   const handleBack = () => {
     window.location.href = '/map';
@@ -498,68 +314,6 @@ export const MoraviaMap: React.FC = () => {
 
   const handleCloseSidebar = () => {
     setSelectedLocation(null);
-  };
-
-  const handleSaveAllPositions = async () => {
-    const changes = Array.from(unsavedChanges);
-    if (changes.length === 0) {
-      alert('No changes to save');
-      return;
-    }
-
-    try {
-      for (const id of changes) {
-        const pos = markerPositions[id];
-        if (pos) {
-          const { xPercent, yPercent } = canvasToPercent(pos.x, pos.y);
-          await updateOne('locations', id, { x_percent: xPercent, y_percent: yPercent });
-        }
-      }
-      alert(`Saved ${changes.length} position(s)`);
-      setUnsavedChanges(new Set());
-      window.location.reload();
-    } catch (e) {
-      console.error('[MoraviaMap] Failed to save positions:', e);
-      alert('Failed to save positions');
-    }
-  };
-
-  const handleCreateLocation = async () => {
-    if (!newMarkerForm.name.trim()) {
-      alert('Name is required');
-      return;
-    }
-    try {
-      const { xPercent, yPercent } = canvasToPercent(newMarkerForm.lng, newMarkerForm.lat);
-      await insertOne('locations', {
-        name: newMarkerForm.name,
-        continent: 'Moravia',
-        x_percent: xPercent,
-        y_percent: yPercent,
-        brief_description: newMarkerForm.brief_description,
-        full_description: newMarkerForm.full_description,
-        visible: newMarkerForm.visible,
-      });
-      alert(`Created "${newMarkerForm.name}" at x:${xPercent}%, y:${yPercent}%`);
-      setNewMarkerForm({ active: false, lat: 0, lng: 0, name: '', brief_description: '', full_description: '', visible: true });
-      setGmMode('view');
-      window.location.reload();
-    } catch (e) {
-      console.error('[MoraviaMap] Failed to create location:', e);
-      alert('Failed to create location');
-    }
-  };
-
-  const handleCancelNewMarker = () => {
-    setNewMarkerForm({ active: false, lat: 0, lng: 0, name: '', brief_description: '', full_description: '', visible: true });
-    setGmMode('view');
-  };
-
-  const handleCopyCoords = (name: string) => {
-    const coords = name === 'outline' ? polygonCoords.outline : polygonCoords.ecozones[name];
-    const json = JSON.stringify(coords, null, 2);
-    navigator.clipboard.writeText(json);
-    alert(`Copied ${name} coordinates to clipboard`);
   };
 
   const formatField = (value: string | null | undefined) => {
@@ -584,195 +338,6 @@ export const MoraviaMap: React.FC = () => {
           </span>
         )}
       </header>
-
-      {/* GM Edit Mode Banner & Toolbar */}
-      {isGmEdit && (
-        <>
-          {/* Top banner */}
-          <div className="fixed top-0 left-0 right-0 z-40 bg-[#e94560] text-white px-4 py-2 text-center font-bold text-sm">
-            GM EDIT MODE — {gmMode === 'place' ? 'Click map to place new marker' : gmMode === 'edit' ? 'Drag vertices to reshape' : 'Drag markers to reposition'}
-          </div>
-
-          {/* Left toolbar panel */}
-          <aside className="fixed left-0 top-12 bottom-0 w-72 bg-[#16213e] border-r border-gray-700 p-4 overflow-y-auto z-40" style={{ top: '48px', height: 'calc(100vh - 48px)' }}>
-            <div className="space-y-4">
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-bold text-[#e94560]">GM EDIT MODE</span>
-              </div>
-
-              {/* Mode toggles */}
-              <div className="flex gap-2">
-                <button
-                  onClick={() => { setGmMode('view'); setShowVertexHandles(null); }}
-                  className={`flex-1 px-2 py-1 text-xs rounded ${gmMode === 'view' ? 'bg-[#e94560] text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}
-                >
-                  View
-                </button>
-                <button
-                  onClick={() => { setGmMode('place'); setShowVertexHandles(null); setNewMarkerForm(prev => ({ ...prev, active: true })); }}
-                  className={`flex-1 px-2 py-1 text-xs rounded ${gmMode === 'place' ? 'bg-[#e94560] text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}
-                >
-                  Place
-                </button>
-                <button
-                  onClick={() => { setGmMode('edit'); setShowVertexHandles('outline'); }}
-                  className={`flex-1 px-2 py-1 text-xs rounded ${gmMode === 'edit' ? 'bg-[#e94560] text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}
-                >
-                  Edit Borders
-                </button>
-              </div>
-
-              {/* Save All button */}
-              {unsavedChanges.size > 0 && (
-                <button
-                  onClick={handleSaveAllPositions}
-                  className="w-full px-3 py-2 bg-[#e94560] text-white rounded hover:bg-[#d63650] transition-colors text-sm font-medium"
-                >
-                  Save All Positions ({unsavedChanges.size})
-                </button>
-              )}
-
-              {/* Vertex handle toggles */}
-              <div className="border-t border-gray-700 pt-4">
-                <p className="text-xs text-gray-400 mb-2">Show Vertex Handles:</p>
-                <div className="space-y-1">
-                  <button
-                    onClick={() => setShowVertexHandles(prev => prev === 'outline' ? null : 'outline')}
-                    className={`w-full text-left px-2 py-1 text-xs rounded ${showVertexHandles === 'outline' ? 'bg-[#e94560] text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}
-                  >
-                    Continent Outline
-                    <button
-                      onClick={() => handleCopyCoords('outline')}
-                      className="ml-1 text-[10px] px-1 py-0.5 bg-gray-600 rounded hover:bg-gray-500"
-                    >
-                      Copy
-                    </button>
-                  </button>
-                  {Object.keys(polygonCoords.ecozones).map(name => (
-                    <button
-                      key={name}
-                      onClick={() => setShowVertexHandles(prev => prev === name ? null : name)}
-                      className={`w-full text-left px-2 py-1 text-xs rounded ${showVertexHandles === name ? 'bg-[#e94560] text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}
-                    >
-                      {name}
-                      <button
-                        onClick={(e) => { e.stopPropagation(); handleCopyCoords(name); }}
-                        className="ml-1 text-[10px] px-1 py-0.5 bg-gray-600 rounded hover:bg-gray-500"
-                      >
-                        Copy
-                      </button>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Location list */}
-              <div className="border-t border-gray-700 pt-4">
-                <p className="text-xs text-gray-400 mb-2 font-medium">Locations ({locationData.length})</p>
-                <div className="space-y-1 max-h-64 overflow-y-auto">
-                  {locationData.map(loc => {
-                    const pos = markerPositions[loc.id];
-                    const hasChanges = unsavedChanges.has(loc.id);
-                    const coords = pos
-                      ? `${canvasToPercent(pos.x, pos.y).xPercent}%, ${canvasToPercent(pos.x, pos.y).yPercent}%`
-                      : `${loc.x_percent}%, ${loc.y_percent}%`;
-
-                    return (
-                      <div key={loc.id} className={`px-2 py-1 rounded text-xs ${hasChanges ? 'bg-[#e94560]/20 border border-[#e94560]' : 'bg-gray-800'} flex flex-col gap-1`}>
-                        <div className="flex items-center justify-between">
-                          <span className="font-medium text-white truncate">{loc.name}</span>
-                          {hasChanges && <span className="text-[10px] text-[#e94560]">●</span>}
-                        </div>
-                        <div className="text-[10px] text-gray-400 font-mono">{coords}</div>
-                        <button
-                          onClick={() => {
-                            if (mapInstanceRef.current && pos) {
-                              mapInstanceRef.current.setView([pos.y, pos.x], 2, { animate: true });
-                            }
-                          }}
-                          className="text-[10px] text-[#e94560] hover:underline self-start"
-                        >
-                          Jump to
-                        </button>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-          </aside>
-        </>
-      )}
-
-      {/* New Marker Form Overlay */}
-      {isGmEdit && newMarkerForm.active && (
-        <div className="fixed inset-0 z-50 pointer-events-none" style={{ top: '48px' }}>
-          <div className="absolute inset-0 bg-black/50 pointer-events-auto" onClick={handleCancelNewMarker} />
-          <div className="fixed left-72 top-20 w-96 bg-[#16213e] border border-gray-700 rounded-lg p-4 pointer-events-auto z-50 shadow-xl">
-            <h3 className="text-lg font-bold text-[#e94560] mb-4">New Location</h3>
-            <div className="space-y-3">
-              <div>
-                <label className="block text-xs text-gray-400 mb-1">Name *</label>
-                <input
-                  type="text"
-                  value={newMarkerForm.name}
-                  onChange={(e) => setNewMarkerForm(prev => ({ ...prev, name: e.target.value }))}
-                  className="w-full px-2 py-1 bg-[#0d0d1a] border border-gray-700 rounded text-white text-sm"
-                  placeholder="Location name"
-                  autoFocus
-                />
-              </div>
-              <div>
-                <label className="block text-xs text-gray-400 mb-1">Brief Description</label>
-                <textarea
-                  value={newMarkerForm.brief_description}
-                  onChange={(e) => setNewMarkerForm(prev => ({ ...prev, brief_description: e.target.value }))}
-                  className="w-full px-2 py-1 bg-[#0d0d1a] border border-gray-700 rounded text-white text-sm"
-                  rows={2}
-                  placeholder="Short description for map popup"
-                />
-              </div>
-              <div>
-                <label className="block text-xs text-gray-400 mb-1">Full Description</label>
-                <textarea
-                  value={newMarkerForm.full_description}
-                  onChange={(e) => setNewMarkerForm(prev => ({ ...prev, full_description: e.target.value }))}
-                  className="w-full px-2 py-1 bg-[#0d0d1a] border border-gray-700 rounded text-white text-sm"
-                  rows={4}
-                  placeholder="Detailed description for sidebar"
-                />
-              </div>
-              <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  id="visible-toggle"
-                  checked={newMarkerForm.visible}
-                  onChange={(e) => setNewMarkerForm(prev => ({ ...prev, visible: e.target.checked }))}
-                  className="w-4 h-4 accent-[#e94560]"
-                />
-                <label htmlFor="visible-toggle" className="text-sm text-gray-300">Visible to players</label>
-              </div>
-              <div className="text-[10px] text-gray-500 font-mono">
-                Position: {canvasToPercent(newMarkerForm.lng, newMarkerForm.lat).xPercent}%, {canvasToPercent(newMarkerForm.lng, newMarkerForm.lat).yPercent}%
-              </div>
-              <div className="flex gap-2 pt-2">
-                <button
-                  onClick={handleCancelNewMarker}
-                  className="flex-1 px-3 py-1 bg-gray-700 text-white rounded hover:bg-gray-600 text-sm"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleCreateLocation}
-                  className="flex-1 px-3 py-1 bg-[#e94560] text-white rounded hover:bg-[#d63650] text-sm font-medium"
-                >
-                  Create
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Map + Sidebar wrapper */}
       <div className="relative w-full h-full" style={{ width: '100vw', height: 'calc(100vh - 48px)' }}>
