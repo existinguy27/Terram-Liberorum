@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { PLAYERS, type PlayerId, getRegisteredPlayerId, isGmOverride, getPreviewPlayerId, getPlayerColor } from '../lib/players';
-import { fetchLocations, type Location } from '../lib/api';
+import { fetchLocations, updateOne, type Location } from '../lib/api';
 
 interface Ecozone {
   name: string;
@@ -44,12 +44,32 @@ const moravaRiver: [number, number][] = [
   [70,50],[75,150],[80,280],[90,400],[100,480]
 ];
 
+// Bounding box for Moravia outline (x: 60-500, y: 30-500)
+const MORAVIA_BOUNDS: [[number, number], [number, number]] = [[30, 60], [500, 500]];
+const OUTLINE_MIN_X = 60;
+const OUTLINE_MAX_X = 500;
+const OUTLINE_MIN_Y = 30;
+const OUTLINE_MAX_Y = 500;
+
 export const MoraviaMap: React.FC = () => {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<any>(null);
   const [playerColor, setPlayerColor] = useState('#ffffff');
   const [isPreview, setIsPreview] = useState(false);
   const [selectedLocation, setSelectedLocation] = useState<Location | null>(null);
+  const [isGmEdit, setIsGmEdit] = useState(false);
+  const [draggedMarkerId, setDraggedMarkerId] = useState<string | null>(null);
+  const [draggedCoords, setDraggedCoords] = useState<{ x: number; y: number } | null>(null);
+  const [outlineCoords, setOutlineCoords] = useState<string>(JSON.stringify(moraviaOutline, null, 2));
+  const [ecozoneCoords, setEcozoneCoords] = useState<Record<string, string>>({});
+
+  // Check for GM edit mode
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('gmedit') === 'true' && isGmOverride()) {
+      setIsGmEdit(true);
+    }
+  }, []);
 
   useEffect(() => {
     const initPlayer = () => {
@@ -74,6 +94,23 @@ export const MoraviaMap: React.FC = () => {
     initPlayer();
   }, []);
 
+  // Scale percentage to canvas coordinates within Moravia bounds
+  const percentToCanvas = (xPercent: number, yPercent: number): [number, number] => {
+    const x = OUTLINE_MIN_X + (xPercent / 100) * (OUTLINE_MAX_X - OUTLINE_MIN_X);
+    const y = OUTLINE_MIN_Y + (yPercent / 100) * (OUTLINE_MAX_Y - OUTLINE_MIN_Y);
+    return [y, x]; // Leaflet uses [lat, lng] = [y, x]
+  };
+
+  // Convert canvas coordinates back to percentages
+  const canvasToPercent = (canvasX: number, canvasY: number): { xPercent: number; yPercent: number } => {
+    const xPercent = ((canvasX - OUTLINE_MIN_X) / (OUTLINE_MAX_X - OUTLINE_MIN_X)) * 100;
+    const yPercent = ((canvasY - OUTLINE_MIN_Y) / (OUTLINE_MAX_Y - OUTLINE_MIN_Y)) * 100;
+    return {
+      xPercent: Math.max(0, Math.min(100, Math.round(xPercent * 10) / 10)),
+      yPercent: Math.max(0, Math.min(100, Math.round(yPercent * 10) / 10)),
+    };
+  };
+
   useEffect(() => {
     if (!mapRef.current || mapInstanceRef.current) return;
 
@@ -83,22 +120,26 @@ export const MoraviaMap: React.FC = () => {
 
       const map = L.map(mapRef.current!, {
         crs: L.CRS.Simple,
-        minZoom: -2,
-        maxZoom: 3,
-        center: [400, 500],
+        minZoom: -1,
+        maxZoom: 4,
+        center: [265, 280],
         zoom: 0,
         attributionControl: false,
         zoomControl: true,
+        maxBounds: MORAVIA_BOUNDS,
+        maxBoundsViscosity: 1.0,
       });
 
       mapInstanceRef.current = map;
 
-      const bounds = [[0, 0], [800, 1000]];
-      const imageBounds = [[0, 0], [800, 1000]];
-      map.fitBounds(imageBounds);
+      // Set container background to water color
+      map.getContainer().style.backgroundColor = '#0a1628';
 
-      // Water background
-      const waterLayer = L.rectangle(bounds, {
+      // Fit to Moravia outline bounds
+      map.fitBounds(MORAVIA_BOUNDS, { padding: [20, 20] });
+
+      // Water background covering full bounds
+      const waterLayer = L.rectangle(MORAVIA_BOUNDS, {
         color: '#0a1628',
         fillColor: '#0a1628',
         fillOpacity: 1,
@@ -169,8 +210,8 @@ export const MoraviaMap: React.FC = () => {
         }),
       }).addTo(map);
 
-      // Compass rose
-      const compass = L.control({ position: 'bottomright' });
+      // Compass rose - bottom LEFT
+      const compass = L.control({ position: 'bottomleft' });
       compass.onAdd = () => {
         const div = L.DomUtil.create('div', 'compass-rose');
         div.innerHTML = `
@@ -209,28 +250,72 @@ export const MoraviaMap: React.FC = () => {
         );
 
         moraviaLocations.forEach((loc: Location) => {
-          const x = (loc.x_percent || 0) * 10;
-          const y = (loc.y_percent || 0) * 8;
+          const [lat, lng] = percentToCanvas(loc.x_percent || 0, loc.y_percent || 0);
 
-          const marker = L.circleMarker([y, x], {
+          // Main marker
+          const marker = L.circleMarker([lat, lng], {
             radius: 8,
             fillColor: '#ffffff',
             color: playerColor,
             weight: 2,
             fillOpacity: 1,
             className: 'location-marker',
+            interactive: true,
           }).addTo(map);
 
+          // Permanent label below marker
+          const label = L.marker([lat + 12, lng], {
+            icon: L.divIcon({
+              className: 'location-label',
+              html: `<div style="
+                font-family: Georgia, serif;
+                color: white;
+                font-size: 10px;
+                text-shadow: 1px 1px 3px rgba(0,0,0,0.9);
+                white-space: nowrap;
+                text-align: center;
+                pointer-events: none;
+              ">${loc.name}</div>`,
+              iconSize: [100, 20],
+              iconAnchor: [50, 0],
+            }),
+            interactive: false,
+          }).addTo(map);
+
+          if (isGmEdit) {
+            marker.dragging.enable();
+            marker.on('dragstart', () => {
+              setDraggedMarkerId(loc.id);
+            });
+            marker.on('drag', (e: any) => {
+              const pos = e.target.getLatLng();
+              setDraggedCoords({ x: pos.lng, y: pos.lat });
+            });
+            marker.on('dragend', (e: any) => {
+              const pos = e.target.getLatLng();
+              const { xPercent, yPercent } = canvasToPercent(pos.lng, pos.lat);
+              setDraggedCoords({ x: pos.lng, y: pos.lat });
+              // Update label position
+              label.setLatLng([pos.lat + 12, pos.lng]);
+            });
+          }
+
           marker.on('click', () => {
-            setSelectedLocation(loc);
+            if (!isGmEdit) {
+              setSelectedLocation(loc);
+            }
           });
 
           marker.on('mouseover', () => {
-            marker.setStyle({ radius: 10, fillColor: playerColor, color: '#ffffff' });
+            if (!isGmEdit) {
+              marker.setStyle({ radius: 10, fillColor: playerColor, color: '#ffffff' });
+            }
           });
 
           marker.on('mouseout', () => {
-            marker.setStyle({ radius: 8, fillColor: '#ffffff', color: playerColor });
+            if (!isGmEdit) {
+              marker.setStyle({ radius: 8, fillColor: '#ffffff', color: playerColor });
+            }
           });
         });
       } catch (e) {
@@ -246,7 +331,7 @@ export const MoraviaMap: React.FC = () => {
         mapInstanceRef.current = null;
       }
     };
-  }, [playerColor]);
+  }, [playerColor, isGmEdit]);
 
   const handleBack = () => {
     window.location.href = '/map';
@@ -256,13 +341,37 @@ export const MoraviaMap: React.FC = () => {
     setSelectedLocation(null);
   };
 
+  const handleUpdatePosition = async () => {
+    if (!draggedMarkerId || !draggedCoords) return;
+    try {
+      const { xPercent, yPercent } = canvasToPercent(draggedCoords.x, draggedCoords.y);
+      await updateOne('locations', draggedMarkerId, { x_percent: xPercent, y_percent: yPercent });
+      alert(`Updated position: x=${xPercent}%, y=${yPercent}%`);
+      window.location.reload();
+    } catch (e) {
+      console.error('[MoraviaMap] Failed to update position:', e);
+      alert('Failed to update position');
+    }
+  };
+
+  const handleUpdateOutline = async () => {
+    try {
+      // This would need a custom API endpoint or direct Supabase update
+      // For now, just show the new coordinates
+      console.log('New outline coords:', outlineCoords);
+      alert('Outline coordinates logged to console. Implement save via Supabase dashboard.');
+    } catch (e) {
+      console.error('[MoraviaMap] Failed to update outline:', e);
+    }
+  };
+
   const formatField = (value: string | null | undefined) => {
     return value && value.trim() ? value : 'None recorded.';
   };
 
   return (
-    <div className="min-h-screen bg-[#0d0d1a] text-white relative" style={{ '--player-color': playerColor }}>
-      <header className="bg-[#16213e] border-b border-gray-800 px-6 py-4 flex items-center justify-between z-10">
+    <div className="min-h-screen bg-[#0a1628] text-white relative" style={{ '--player-color': playerColor }}>
+      <header className="bg-[#16213e] border-b border-gray-800 px-6 py-3 flex items-center justify-between z-10" style={{ height: '48px' }}>
         <button
           onClick={handleBack}
           className="px-4 py-2 text-sm bg-gray-800 border border-gray-700 rounded hover:bg-gray-700 transition-colors flex items-center gap-2"
@@ -279,15 +388,54 @@ export const MoraviaMap: React.FC = () => {
         )}
       </header>
 
-      <main className="flex-1 w-full">
-        <div ref={mapRef} className="w-full h-full" style={{ minHeight: 'calc(100vh - 72px)' }} />
+      {/* GM Edit Toolbar */}
+      {isGmEdit && (
+        <div className="fixed top-12 left-1/2 -translate-x-1/2 z-50 bg-[#16213e] border border-[#e94560] rounded-lg p-4 shadow-xl">
+          <div className="flex items-center gap-4 flex-wrap">
+            <span className="text-sm font-bold text-[#e94560]">GM EDIT MODE</span>
+            {draggedMarkerId && draggedCoords && (
+              <>
+                <span className="text-xs text-gray-300 font-mono">
+                  Marker: {draggedMarkerId.slice(0, 8)}... → x: {draggedCoords.x.toFixed(1)}, y: {draggedCoords.y.toFixed(1)}
+                </span>
+                <span className="text-xs text-gray-300 font-mono">
+                  → {canvasToPercent(draggedCoords.x, draggedCoords.y).xPercent}%, {canvasToPercent(draggedCoords.x, draggedCoords.y).yPercent}%
+                </span>
+                <button
+                  onClick={handleUpdatePosition}
+                  className="px-3 py-1 text-xs bg-[#e94560] text-white rounded hover:bg-[#d63650] transition-colors"
+                >
+                  Update Position
+                </button>
+              </>
+            )}
+            <div className="w-64">
+              <label className="block text-xs text-gray-400 mb-1">Outline Coords (JSON)</label>
+              <textarea
+                value={outlineCoords}
+                onChange={(e) => setOutlineCoords(e.target.value)}
+                className="w-full h-20 px-2 py-1 bg-[#0d0d1a] border border-gray-700 rounded text-white text-xs font-mono"
+              />
+            </div>
+            <button
+              onClick={handleUpdateOutline}
+              className="px-3 py-1 text-xs bg-gray-700 text-white rounded hover:bg-gray-600 transition-colors"
+            >
+              Save Outline
+            </button>
+          </div>
+        </div>
+      )}
+
+      <main className="w-full h-full" style={{ height: 'calc(100vh - 48px)' }}>
+        <div ref={mapRef} className="w-full h-full" style={{ backgroundColor: '#0a1628' }} />
       </main>
 
-      {/* Sidebar */}
+      {/* Sidebar - fixed overlay */}
       {selectedLocation && (
-        <div className="fixed inset-0 z-50 pointer-events-none">
+        <div className="fixed inset-0 z-50 pointer-events-none" style={{ top: '48px' }}>
           <div className="absolute inset-0 bg-black/50 pointer-events-auto" onClick={handleCloseSidebar} />
-          <aside className="absolute right-0 top-0 bottom-0 w-full md:w-96 bg-[#0d0d1a] border-l border-gray-700 pointer-events-auto overflow-y-auto animate-slide-in">
+          <aside className="fixed right-0 top-0 h-full w-full md:w-96 bg-[#0d0d1a] border-l border-gray-700 pointer-events-auto overflow-y-auto animate-slide-in z-50" style={{ top: '48px', height: 'calc(100vh - 48px)' }}>
             <div className="p-6">
               <div className="flex justify-between items-start mb-6">
                 <div>

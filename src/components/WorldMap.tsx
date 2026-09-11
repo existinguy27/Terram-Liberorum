@@ -84,14 +84,18 @@ export const WorldMap: React.FC = () => {
         zoom: 0,
         attributionControl: false,
         zoomControl: true,
+        maxBounds: [[0, 0], [600, 1000]],
+        maxBoundsViscosity: 1.0,
       });
 
       mapInstanceRef.current = map;
 
       const bounds = [[0, 0], [600, 1000]];
-      const imageBounds = [[0, 0], [600, 1000]];
 
-      map.fitBounds(imageBounds);
+      // Set container background to water color
+      map.getContainer().style.backgroundColor = '#0a1628';
+
+      map.fitBounds(bounds, { padding: [20, 20] });
 
       // Water background
       const waterLayer = L.rectangle(bounds, {
@@ -234,7 +238,7 @@ export const WorldMap: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-[#0d0d1a] text-white" style={{ '--player-color': playerColor }}>
-      <header className="bg-[#16213e] border-b border-gray-800 px-6 py-4 flex items-center justify-between">
+      <header className="bg-[#16213e] border-b border-gray-800 px-6 py-3 flex items-center justify-between" style={{ height: '48px' }}>
         <button
           onClick={handleBack}
           className="px-4 py-2 text-sm bg-gray-800 border border-gray-700 rounded hover:bg-gray-700 transition-colors flex items-center gap-2"
@@ -251,8 +255,8 @@ export const WorldMap: React.FC = () => {
         )}
       </header>
 
-      <main className="flex-1 w-full">
-        <div ref={mapRef} className="w-full h-full" style={{ minHeight: 'calc(100vh - 72px)' }} />
+      <main className="w-full h-full" style={{ height: 'calc(100vh - 48px)' }}>
+        <div ref={mapRef} className="w-full h-full" style={{ backgroundColor: '#0a1628' }} />
       </main>
     </div>
   );
