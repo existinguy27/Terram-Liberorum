@@ -3,6 +3,9 @@ import { DeviceRegistration } from './DeviceRegistration';
 import { PlayerHomepage } from './PlayerHomepage';
 import { getRegisteredPlayerId, isGmOverride, getPreviewPlayerId, isResetRequested, clearDeviceToken, type PlayerId } from '../lib/players';
 
+console.log('[DEBUG] Supabase URL:', import.meta.env.PUBLIC_SUPABASE_URL);
+console.log('[DEBUG] Supabase Key exists:', !!import.meta.env.PUBLIC_SUPABASE_ANON_KEY);
+
 export const PlayerApp: React.FC = () => {
   const [showRegistration, setShowRegistration] = useState(true);
   const [registeredPlayerId, setRegisteredPlayerId] = useState<PlayerId | null>(null);
