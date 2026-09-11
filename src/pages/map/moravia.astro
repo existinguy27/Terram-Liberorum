@@ -1,0 +1,27 @@
+---
+import { MoraviaMap } from '../../components/MoraviaMap';
+import '../../styles/global.css';
+---
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" href="/favicon.ico" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="generator" content={Astro.generator} />
+    <title>Terram Liberorum — Moravia</title>
+    <style>
+      @keyframes slideIn {
+        from { transform: translateX(100%); }
+        to { transform: translateX(0); }
+      }
+      .animate-slide-in {
+        animation: slideIn 0.3s ease-out;
+      }
+    </style>
+  </head>
+  <body class="min-h-screen bg-[#0d0d1a] text-white">
+    <MoraviaMap client:load />
+  </body>
+</html>

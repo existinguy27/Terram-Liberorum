@@ -1,4 +1,5 @@
 ---
+import { WorldMap } from '../components/WorldMap';
 import '../styles/global.css';
 ---
 
@@ -9,15 +10,9 @@ import '../styles/global.css';
     <link rel="icon" href="/favicon.ico" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="generator" content={Astro.generator} />
-    <title>World Map — Terram Liberorum</title>
+    <title>Terram Liberorum — World Map</title>
   </head>
-  <body class="min-h-screen bg-[#0d0d1a] text-white flex items-center justify-center">
-    <div class="text-center">
-      <h1 class="text-5xl md:text-7xl font-bold mb-4">World Map</h1>
-      <p class="text-xl text-gray-400">Coming Soon</p>
-      <a href="/" className="inline-block mt-8 px-6 py-3 bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors">
-        ← Back to Home
-      </a>
-    </div>
+  <body class="min-h-screen bg-[#0d0d1a] text-white">
+    <WorldMap client:load />
   </body>
 </html>
