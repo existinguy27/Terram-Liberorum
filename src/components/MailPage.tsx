@@ -173,7 +173,7 @@ export const MailPage: React.FC = () => {
               {mail.map((item) => (
                 <article
                   key={item.id}
-                  className="bg-[#16213e] border rounded-xl p-6 transition-all duration-200 cursor-pointer group"
+                  className="bg-[#16213e] border rounded-xl p-8 transition-all duration-200 cursor-pointer group"
                   style={{ borderColor: `${playerColor}40` }}
                   onClick={() => setSelectedMail(item)}
                   onMouseOver={(e) => {
@@ -187,8 +187,13 @@ export const MailPage: React.FC = () => {
                 >
                   <h3 className="text-lg font-bold mb-2" style={{ color: playerColor }}>{item.title}</h3>
                   <p className="text-gray-400 text-sm mb-3">From: {item.sender}</p>
-                  <div className="relative fade-container">
-                    <p className="text-gray-300 line-clamp-3">{item.content.substring(0, 120)}...</p>
+                  <div className="relative max-h-28 overflow-hidden">
+                    <p className="text-gray-200 leading-relaxed">
+                      {item.content.substring(0, 220)}{item.content.length > 220 ? '...' : ''}
+                    </p>
+                    <div className="pointer-events-none absolute inset-x-0 bottom-0 h-20" style={{
+                      background: 'linear-gradient(to bottom, transparent 30%, #16213e 100%)',
+                    }} />
                   </div>
                   <p className="text-xs text-gray-500 mt-4">{formatDate(item.created_at)}</p>
                 </article>
