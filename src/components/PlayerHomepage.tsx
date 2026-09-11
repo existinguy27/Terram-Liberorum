@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { PLAYERS, type PlayerId, isGmOverride, isResetRequested, clearDeviceToken, getDeviceToken } from '../lib/players';
-import { fetchMail, fetchPlayerByDeviceToken, fetchPlayers } from '../lib/api';
+import { PLAYERS, type PlayerId, isGmOverride, isResetRequested, clearDeviceToken } from '../lib/players';
+import { fetchMail, fetchPlayers } from '../lib/api';
 
 interface PlayerHomepageProps {
   initialPlayerId?: PlayerId;
@@ -36,31 +36,27 @@ export const PlayerHomepage: React.FC<PlayerHomepageProps> = ({ initialPlayerId,
 
       if (resolvedPlayerId) {
         try {
-          // Get device token and fetch player UUID from Supabase
-          const deviceToken = getDeviceToken();
-          console.log('[PlayerHomepage] Device token:', deviceToken);
+          // Fetch all players and find the UUID matching our playerId (name)
+          const allPlayers = await fetchPlayers();
+          const matchedPlayer = allPlayers.find(p => p.name.toLowerCase() === resolvedPlayerId.toLowerCase());
+          const playerUuid = matchedPlayer?.id || null;
 
-          let playerUuid: string | null = null;
-          if (deviceToken) {
-            const playerData = await fetchPlayerByDeviceToken(deviceToken);
-            playerUuid = playerData?.id || null;
-            console.log('[PlayerHomepage] Fetched player data:', playerData);
-          }
+          console.log('[PlayerHomepage] playerId:', resolvedPlayerId, 'matchedPlayer:', matchedPlayer, 'playerUuid:', playerUuid);
 
-          // GM override or preview mode: use first player's UUID as fallback
+          // GM override or preview mode without match: use first player's UUID as fallback
           if (!playerUuid && (isGmOverride() || initialPlayerId)) {
-            const allPlayers = await fetchPlayers();
-            playerUuid = allPlayers[0]?.id || null;
-            console.log('[PlayerHomepage] GM/Preview fallback playerUuid:', playerUuid);
+            const fallbackUuid = allPlayers[0]?.id || null;
+            console.log('[PlayerHomepage] GM/Preview fallback playerUuid:', fallbackUuid);
           }
 
-          console.log('[PlayerHomepage] Final playerUuid for filtering:', playerUuid);
+          const finalUuid = playerUuid || (isGmOverride() || initialPlayerId ? allPlayers[0]?.id || null : null);
+          console.log('[PlayerHomepage] Final playerUuid for filtering:', finalUuid);
 
           const allMail = await fetchMail();
           console.log('[PlayerHomepage] All mail from DB:', allMail.map(m => ({ id: m.id, player_id: m.player_id, title: m.title })));
 
-          const playerMail = playerUuid
-            ? allMail.filter((m: any) => m.player_id === playerUuid)
+          const playerMail = finalUuid
+            ? allMail.filter((m: any) => m.player_id === finalUuid)
             : [];
           console.log('[PlayerHomepage] Filtered mail for player:', playerMail);
 
@@ -116,15 +112,18 @@ export const PlayerHomepage: React.FC<PlayerHomepageProps> = ({ initialPlayerId,
       <main className="px-6 py-8 md:py-12 max-w-3xl mx-auto">
         <section className="mb-12">
           <h2 className="text-lg font-semibold uppercase tracking-wider text-gray-400 mb-4">Latest Mail</h2>
-          <div className="bg-[#16213e] border rounded-xl p-6" style={{ borderColor: `${playerColor}40` }}>
+          <div className="bg-[#16213e] border rounded-xl p-8" style={{ borderColor: `${playerColor}40` }}>
             {mail ? (
               <>
                 <h3 className="text-xl font-bold mb-2" style={{ color: playerColor }}>{mail.title}</h3>
                 <p className="text-gray-400 mb-4">From: {mail.sender}</p>
-                <div className="relative fade-container" style={{ '--player-color': playerColor }}>
-                  <p className="text-gray-300 line-clamp-3" style={{ maxWidth: '100%' }}>
-                    {mail.content.substring(0, 100)}{mail.content.length > 100 ? '...' : ''}
+                <div className="relative max-h-28 overflow-hidden" style={{ '--player-color': playerColor }}>
+                  <p className="text-gray-200 leading-relaxed">
+                    {mail.content.substring(0, 220)}{mail.content.length > 220 ? '...' : ''}
                   </p>
+                  <div className="pointer-events-none absolute inset-x-0 bottom-0 h-20" style={{
+                    background: 'linear-gradient(to bottom, transparent 30%, #16213e 100%)',
+                  }} />
                 </div>
                 <a
                   href="/mail"

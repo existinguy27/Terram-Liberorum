@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { PLAYERS, type PlayerId, getRegisteredPlayerId, isGmOverride, getPreviewPlayerId, getPlayerColor, getDeviceToken } from '../lib/players';
-import { fetchMail, fetchPlayerByDeviceToken, fetchPlayers } from '../lib/api';
+import { PLAYERS, type PlayerId, getRegisteredPlayerId, isGmOverride, getPreviewPlayerId, getPlayerColor } from '../lib/players';
+import { fetchMail, fetchPlayers } from '../lib/api';
 
 export const MailPage: React.FC = () => {
   console.log('[MailPage] Component mounted');
@@ -26,31 +26,27 @@ export const MailPage: React.FC = () => {
     }
 
     try {
-      // Get device token and fetch player UUID from Supabase
-      const deviceToken = getDeviceToken();
-      console.log('[MailPage] Device token:', deviceToken);
+      // Fetch all players and find the UUID matching our playerId (name)
+      const allPlayers = await fetchPlayers();
+      const matchedPlayer = allPlayers.find(p => p.name.toLowerCase() === playerId.toLowerCase());
+      const playerUuid = matchedPlayer?.id || null;
 
-      let playerUuid: string | null = null;
-      if (deviceToken) {
-        const playerData = await fetchPlayerByDeviceToken(deviceToken);
-        playerUuid = playerData?.id || null;
-        console.log('[MailPage] Fetched player data:', playerData);
-      }
+      console.log('[MailPage] playerId:', playerId, 'matchedPlayer:', matchedPlayer, 'playerUuid:', playerUuid);
 
-      // GM override or preview mode: use first player's UUID as fallback
+      // GM override or preview mode without match: use first player's UUID as fallback
       if (!playerUuid && (isGmOverride() || getPreviewPlayerId())) {
-        const allPlayers = await fetchPlayers();
-        playerUuid = allPlayers[0]?.id || null;
-        console.log('[MailPage] GM/Preview fallback playerUuid:', playerUuid);
+        const fallbackUuid = allPlayers[0]?.id || null;
+        console.log('[MailPage] GM/Preview fallback playerUuid:', fallbackUuid);
       }
 
-      console.log('[MailPage] Final playerUuid for filtering:', playerUuid);
+      const finalUuid = playerUuid || (isGmOverride() || getPreviewPlayerId() ? allPlayers[0]?.id || null : null);
+      console.log('[MailPage] Final playerUuid for filtering:', finalUuid);
 
       const allMail = await fetchMail();
       console.log('[MailPage] All mail from DB:', allMail.map(m => ({ id: m.id, player_id: m.player_id, title: m.title })));
 
-      const playerMail = playerUuid
-        ? allMail.filter((m: any) => m.player_id === playerUuid)
+      const playerMail = finalUuid
+        ? allMail.filter((m: any) => m.player_id === finalUuid)
         : [];
       console.log('[MailPage] Filtered mail for player:', playerMail);
 
