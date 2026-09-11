@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { PLAYERS, type PlayerId, isGmOverride, isResetRequested, clearDeviceToken } from '../lib/players';
-import { fetchMail } from '../lib/api';
+import { PLAYERS, type PlayerId, isGmOverride, isResetRequested, clearDeviceToken, getDeviceToken } from '../lib/players';
+import { fetchMail, fetchPlayerByDeviceToken, fetchPlayers } from '../lib/api';
 
 interface PlayerHomepageProps {
   initialPlayerId?: PlayerId;
@@ -36,11 +36,37 @@ export const PlayerHomepage: React.FC<PlayerHomepageProps> = ({ initialPlayerId,
 
       if (resolvedPlayerId) {
         try {
+          // Get device token and fetch player UUID from Supabase
+          const deviceToken = getDeviceToken();
+          console.log('[PlayerHomepage] Device token:', deviceToken);
+
+          let playerUuid: string | null = null;
+          if (deviceToken) {
+            const playerData = await fetchPlayerByDeviceToken(deviceToken);
+            playerUuid = playerData?.id || null;
+            console.log('[PlayerHomepage] Fetched player data:', playerData);
+          }
+
+          // GM override or preview mode: use first player's UUID as fallback
+          if (!playerUuid && (isGmOverride() || initialPlayerId)) {
+            const allPlayers = await fetchPlayers();
+            playerUuid = allPlayers[0]?.id || null;
+            console.log('[PlayerHomepage] GM/Preview fallback playerUuid:', playerUuid);
+          }
+
+          console.log('[PlayerHomepage] Final playerUuid for filtering:', playerUuid);
+
           const allMail = await fetchMail();
-          const playerMail = allMail.filter((m: any) => m.player_id === getPlayerDbId(resolvedPlayerId));
+          console.log('[PlayerHomepage] All mail from DB:', allMail.map(m => ({ id: m.id, player_id: m.player_id, title: m.title })));
+
+          const playerMail = playerUuid
+            ? allMail.filter((m: any) => m.player_id === playerUuid)
+            : [];
+          console.log('[PlayerHomepage] Filtered mail for player:', playerMail);
+
           setMail(playerMail[0] || null);
         } catch (e) {
-          console.error('Failed to fetch mail:', e);
+          console.error('[PlayerHomepage ERROR]', e);
         }
       }
       setLoading(false);
@@ -48,16 +74,6 @@ export const PlayerHomepage: React.FC<PlayerHomepageProps> = ({ initialPlayerId,
 
     initPlayer();
   }, [initialPlayerId, isPreview]);
-
-  const getPlayerDbId = (pid: PlayerId): string => {
-    const map: Record<PlayerId, string> = {
-      kael: 'Kael',
-      hannya: 'Hannya',
-      silas: 'Silas',
-      ryuin: 'Ryuin',
-    };
-    return map[pid];
-  };
 
   if (loading) {
     return (

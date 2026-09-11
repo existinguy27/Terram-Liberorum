@@ -3,6 +3,8 @@ import { PLAYERS, type PlayerId, getRegisteredPlayerId, isGmOverride, getPreview
 import { fetchMail, fetchPlayerByDeviceToken, fetchPlayers } from '../lib/api';
 
 export const MailPage: React.FC = () => {
+  console.log('[MailPage] Component mounted');
+
   const [playerId, setPlayerId] = useState<PlayerId | null>(null);
   const [mail, setMail] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -63,7 +65,7 @@ export const MailPage: React.FC = () => {
         setHasMore(mail.length + newMail.length < sortedMail.length);
       }
     } catch (e) {
-      console.error('Failed to fetch mail:', e);
+      console.error('[MailPage ERROR]', e);
     } finally {
       setLoading(false);
       setLoadingMore(false);
