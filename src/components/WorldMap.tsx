@@ -84,21 +84,22 @@ export const WorldMap: React.FC = () => {
         zoom: 0,
         attributionControl: false,
         zoomControl: true,
-        maxBounds: [[0, 0], [600, 1000]],
+        maxBounds: [[-300, -300], [900, 1300]],
         maxBoundsViscosity: 1.0,
       });
 
       mapInstanceRef.current = map;
 
       const bounds = [[0, 0], [600, 1000]];
+      const expandedBounds = [[-300, -300], [900, 1300]];
 
       // Set container background to water color
       map.getContainer().style.backgroundColor = '#0a1628';
 
       map.fitBounds(bounds, { padding: [20, 20] });
 
-      // Water background
-      const waterLayer = L.rectangle(bounds, {
+      // Water background covering expanded bounds
+      const waterLayer = L.rectangle(expandedBounds, {
         color: '#0a1628',
         fillColor: '#0a1628',
         fillOpacity: 1,
