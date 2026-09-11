@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { PLAYERS, type PlayerId, getRegisteredPlayerId, isGmOverride, getPreviewPlayerId, getPlayerColor } from '../lib/players';
-import { fetchMail } from '../lib/api';
+import { PLAYERS, type PlayerId, getRegisteredPlayerId, isGmOverride, getPreviewPlayerId, getPlayerColor, getDeviceToken } from '../lib/players';
+import { fetchMail, fetchPlayerByDeviceToken, fetchPlayers } from '../lib/api';
 
 export const MailPage: React.FC = () => {
   const [playerId, setPlayerId] = useState<PlayerId | null>(null);
@@ -14,16 +14,6 @@ export const MailPage: React.FC = () => {
   const player = playerId ? PLAYERS.find(p => p.id === playerId) : null;
   const playerColor = player ? player.color : '#ffffff';
 
-  const getPlayerDbId = (pid: PlayerId): string => {
-    const map: Record<PlayerId, string> = {
-      kael: 'Kael',
-      hannya: 'Hannya',
-      silas: 'Silas',
-      ryuin: 'Ryuin',
-    };
-    return map[pid];
-  };
-
   const loadMail = useCallback(async (reset = false) => {
     if (!playerId) return;
 
@@ -34,8 +24,34 @@ export const MailPage: React.FC = () => {
     }
 
     try {
+      // Get device token and fetch player UUID from Supabase
+      const deviceToken = getDeviceToken();
+      console.log('[MailPage] Device token:', deviceToken);
+
+      let playerUuid: string | null = null;
+      if (deviceToken) {
+        const playerData = await fetchPlayerByDeviceToken(deviceToken);
+        playerUuid = playerData?.id || null;
+        console.log('[MailPage] Fetched player data:', playerData);
+      }
+
+      // GM override or preview mode: use first player's UUID as fallback
+      if (!playerUuid && (isGmOverride() || getPreviewPlayerId())) {
+        const allPlayers = await fetchPlayers();
+        playerUuid = allPlayers[0]?.id || null;
+        console.log('[MailPage] GM/Preview fallback playerUuid:', playerUuid);
+      }
+
+      console.log('[MailPage] Final playerUuid for filtering:', playerUuid);
+
       const allMail = await fetchMail();
-      const playerMail = allMail.filter((m: any) => m.player_id === getPlayerDbId(playerId));
+      console.log('[MailPage] All mail from DB:', allMail.map(m => ({ id: m.id, player_id: m.player_id, title: m.title })));
+
+      const playerMail = playerUuid
+        ? allMail.filter((m: any) => m.player_id === playerUuid)
+        : [];
+      console.log('[MailPage] Filtered mail for player:', playerMail);
+
       const sortedMail = playerMail.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
       if (reset) {

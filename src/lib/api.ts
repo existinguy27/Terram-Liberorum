@@ -116,6 +116,16 @@ export async function fetchPlayers(): Promise<Player[]> {
   return fetchAll<Player>('players');
 }
 
+export async function fetchPlayerByDeviceToken(deviceToken: string): Promise<Player | null> {
+  const { data, error } = await supabase
+    .from('players')
+    .select('*')
+    .eq('device_token', deviceToken)
+    .single();
+  if (error || !data) return null;
+  return data as Player;
+}
+
 export async function fetchMail(): Promise<Mail[]> {
   return fetchAll<Mail>('mail');
 }
