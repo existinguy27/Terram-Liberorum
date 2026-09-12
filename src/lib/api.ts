@@ -83,6 +83,20 @@ export type Town = {
   created_at: string;
 };
 
+export type ContinentBorder = {
+  id: string;
+  name: string;
+  continent: string;
+  coords: [number, number][];
+  label_x: number | null;
+  label_y: number | null;
+  fill_color: string | null;
+  stroke_color: string | null;
+  fill_opacity: number | null;
+  border_type: 'continent' | 'ecozone' | 'path' | 'river';
+  created_at: string;
+};
+
 // Generic CRUD functions
 export async function fetchAll<T>(table: string): Promise<T[]> {
   const { data, error } = await supabase.from(table).select('*').order('created_at', { ascending: false });
@@ -152,4 +166,22 @@ export async function fetchLore(): Promise<Lore[]> {
 
 export async function fetchTowns(): Promise<Town[]> {
   return fetchAll<Town>('towns');
+}
+
+export async function fetchContinentBorders(continent: string): Promise<ContinentBorder[]> {
+  const { data, error } = await supabase
+    .from('continent_borders')
+    .select('*')
+    .eq('continent', continent)
+    .order('created_at', { ascending: true });
+  if (error) throw error;
+  return data as ContinentBorder[];
+}
+
+export async function updateContinentBorder(id: string, updates: Partial<ContinentBorder>): Promise<ContinentBorder> {
+  return updateOne<ContinentBorder>('continent_borders', id, updates);
+}
+
+export async function insertContinentBorder(row: Partial<ContinentBorder>): Promise<ContinentBorder> {
+  return insertOne<ContinentBorder>('continent_borders', row);
 }

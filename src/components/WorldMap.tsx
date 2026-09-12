@@ -1,50 +1,25 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { PLAYERS, type PlayerId, getRegisteredPlayerId, isGmOverride, getPreviewPlayerId, getPlayerColor } from '../lib/players';
+import { fetchContinentBorders, type ContinentBorder } from '../lib/api';
 
-interface Continent {
+interface WorldBorder {
+  id: string;
   name: string;
   coords: [number, number][];
-  center: [number, number];
+  label_x: number | null;
+  label_y: number | null;
+  fill_color: string | null;
+  stroke_color: string | null;
+  fill_opacity: number | null;
+  border_type: 'continent' | 'ecozone' | 'path' | 'river';
 }
-
-const continents: Continent[] = [
-  {
-    name: 'Rohendel West',
-    coords: [[80,60],[180,50],[200,90],[220,120],[190,150],[140,160],[90,140],[70,100]],
-    center: [140, 100],
-  },
-  {
-    name: 'Rohendel East (Icecrown Citadel)',
-    coords: [[260,40],[310,35],[320,70],[300,90],[255,80]],
-    center: [290, 60],
-  },
-  {
-    name: 'Sedletz',
-    coords: [[20,280],[60,260],[75,300],[70,380],[50,420],[20,400],[10,350]],
-    center: [45, 350],
-  },
-  {
-    name: 'Bohemia',
-    coords: [[180,180],[420,160],[500,190],[510,240],[480,280],[400,290],[300,300],[200,290],[160,260],[150,220]],
-    center: [320, 230],
-  },
-  {
-    name: 'Sasau',
-    coords: [[150,310],[320,300],[340,380],[320,450],[280,500],[200,510],[150,480],[120,420],[130,360]],
-    center: [220, 400],
-  },
-  {
-    name: 'Moravia',
-    coords: [[620,300],[720,280],[780,310],[790,380],[760,440],[700,470],[640,460],[600,420],[590,360]],
-    center: [680, 380],
-  },
-];
 
 export const WorldMap: React.FC = () => {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<any>(null);
   const [playerColor, setPlayerColor] = useState('#ffffff');
   const [isPreview, setIsPreview] = useState(false);
+  const [borders, setBorders] = useState<WorldBorder[]>([]);
 
   useEffect(() => {
     const initPlayer = () => {
@@ -67,6 +42,21 @@ export const WorldMap: React.FC = () => {
       }
     };
     initPlayer();
+  }, []);
+
+  // Fetch continent borders from Supabase
+  useEffect(() => {
+    const fetchBorders = async () => {
+      try {
+        const data = await fetchContinentBorders('Terram Liberorum');
+        // Filter to only continent-type borders for world map
+        const continentBorders = data.filter(b => b.border_type === 'continent');
+        setBorders(continentBorders);
+      } catch (e) {
+        console.error('[WorldMap] Failed to fetch borders:', e);
+      }
+    };
+    fetchBorders();
   }, []);
 
   useEffect(() => {
@@ -99,29 +89,34 @@ export const WorldMap: React.FC = () => {
       map.fitBounds(bounds, { padding: [20, 20] });
 
       // Water background covering expanded bounds
-      const waterLayer = L.rectangle(expandedBounds, {
+      L.rectangle(expandedBounds, {
         color: '#0a1628',
         fillColor: '#0a1628',
         fillOpacity: 1,
         weight: 0,
       }).addTo(map);
 
-      // Continent layers
-      const continentLayers: any[] = [];
+      // Draw continent borders from Supabase
+      borders.forEach((border) => {
+        const isMoravia = border.name === 'Moravia';
+        const fillColor = border.fill_color || '#1a3a2a';
+        const strokeColor = border.stroke_color || (isMoravia ? '#6ac98a' : '#4a9a6a');
+        const fillOpacity = border.fill_opacity ?? 0.8;
+        const weight = isMoravia ? 3 : 2;
 
-      continents.forEach((continent) => {
-        const isMoravia = continent.name === 'Moravia';
-
-        const polygon = L.polygon(continent.coords, {
-          color: isMoravia ? '#6ac98a' : '#4a9a6a',
-          fillColor: '#1a3a2a',
-          fillOpacity: 0.8,
-          weight: isMoravia ? 3 : 2,
+        const polygon = L.polygon(border.coords, {
+          color: strokeColor,
+          fillColor: fillColor,
+          fillOpacity: fillOpacity,
+          weight: weight,
           className: isMoravia ? 'continent-moravia' : '',
         }).addTo(map);
 
-        // Permanent tooltip label
-        const tooltip = L.tooltip({
+        // Permanent tooltip label at label position
+        const labelX = border.label_x ?? (border.coords[0]?.[1] ?? 0);
+        const labelY = border.label_y ?? (border.coords[0]?.[0] ?? 0);
+
+        L.tooltip({
           permanent: true,
           direction: 'center',
           className: 'continent-label',
@@ -134,8 +129,8 @@ export const WorldMap: React.FC = () => {
             font-weight: 500;
             text-shadow: 1px 1px 3px rgba(0,0,0,0.8);
             white-space: nowrap;
-          ">${continent.name}</div>
-        `).setLatLng(continent.center).addTo(map);
+          ">${border.name}</div>
+        `).setLatLng([labelY, labelX]).addTo(map);
 
         // Hover effects
         polygon.on('mouseover', () => {
@@ -151,10 +146,10 @@ export const WorldMap: React.FC = () => {
 
         polygon.on('mouseout', () => {
           polygon.setStyle({
-            fillColor: '#1a3a2a',
-            fillOpacity: 0.8,
-            weight: isMoravia ? 3 : 2,
-            color: isMoravia ? '#6ac98a' : '#4a9a6a',
+            fillColor: fillColor,
+            fillOpacity: fillOpacity,
+            weight: weight,
+            color: strokeColor,
           });
         });
 
@@ -163,15 +158,13 @@ export const WorldMap: React.FC = () => {
           if (isMoravia) {
             window.location.href = '/map/moravia';
           } else {
-            alert(`${continent.name} — Not yet explored`);
+            alert(`${border.name} — Not yet explored`);
           }
         });
-
-        continentLayers.push({ polygon, tooltip });
       });
 
-      // Sea of Nozdormu label
-      const seaLabel = L.marker([150, 800], {
+      // Sea of Nozdormu label (static)
+      L.marker([150, 800], {
         icon: L.divIcon({
           className: 'sea-label',
           html: '<div style="font-family: Georgia, serif; color: #4a6a8a; font-size: 14px; font-style: italic; text-shadow: 1px 1px 3px rgba(0,0,0,0.8); transform: rotate(-15deg);">Sea of Nozdormu</div>',
@@ -180,8 +173,8 @@ export const WorldMap: React.FC = () => {
         }),
       }).addTo(map);
 
-      // Eclipse River label
-      const riverLabel = L.marker([380, 480], {
+      // Eclipse River label (static)
+      L.marker([380, 480], {
         icon: L.divIcon({
           className: 'river-label',
           html: '<div style="font-family: Georgia, serif; color: #4a6a8a; font-size: 12px; font-style: italic; text-shadow: 1px 1px 3px rgba(0,0,0,0.8); transform: rotate(45deg);">Eclipse River</div>',
@@ -231,7 +224,7 @@ export const WorldMap: React.FC = () => {
         mapInstanceRef.current = null;
       }
     };
-  }, []);
+  }, [borders]);
 
   const handleBack = () => {
     window.location.href = '/';

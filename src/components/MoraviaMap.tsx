@@ -1,48 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { PLAYERS, type PlayerId, getRegisteredPlayerId, isGmOverride, getPreviewPlayerId, getPlayerColor } from '../lib/players';
-import { fetchLocations, type Location } from '../lib/api';
-
-interface Ecozone {
-  name: string;
-  coords: [number, number][];
-  fillColor: string;
-  center: [number, number];
-}
-
-const moraviaOutline: [number, number][] = [
-  [100,50],[300,30],[450,60],[500,120],[490,200],[460,280],
-  [420,350],[380,420],[300,480],[200,500],[120,470],[80,400],
-  [60,300],[70,180],[100,50]
-];
-
-const ecozones: Ecozone[] = [
-  {
-    name: 'Redwood Forest',
-    coords: [[200,30],[420,40],[470,100],[440,180],[350,200],[220,190],[170,120],[180,60]],
-    fillColor: '#2d5a1b',
-    center: [300, 100],
-  },
-  {
-    name: 'Hills of Jarlsberg',
-    coords: [[80,150],[200,130],[280,200],[260,320],[180,360],[90,320],[60,240]],
-    fillColor: '#5a4a1b',
-    center: [180, 250],
-  },
-  {
-    name: 'Moravian Woods',
-    coords: [[350,280],[480,260],[510,340],[490,430],[400,470],[320,450],[300,370],[330,300]],
-    fillColor: '#1b3d1b',
-    center: [400, 350],
-  },
-];
-
-const pathOfShatteredKings: [number, number][] = [
-  [120,200],[200,250],[300,280],[400,300],[480,320]
-];
-
-const moravaRiver: [number, number][] = [
-  [70,50],[75,150],[80,280],[90,400],[100,480]
-];
+import { fetchLocations, fetchContinentBorders, type Location, type ContinentBorder } from '../lib/api';
 
 // Bounding box for Moravia outline (x: 60-500, y: 30-500)
 const OUTLINE_MIN_X = 60;
@@ -62,6 +20,7 @@ export const MoraviaMap: React.FC = () => {
   const [selectedLocation, setSelectedLocation] = useState<Location | null>(null);
   const [locationData, setLocationData] = useState<Location[]>([]);
   const [markerPositions, setMarkerPositions] = useState<Record<string, { x: number; y: number }>>({});
+  const [borders, setBorders] = useState<ContinentBorder[]>([]);
 
   // Scale percentage to canvas coordinates within Moravia bounds
   const percentToCanvas = useCallback((xPercent: number, yPercent: number): [number, number] => {
@@ -117,6 +76,19 @@ export const MoraviaMap: React.FC = () => {
     fetchData();
   }, [percentToCanvas]);
 
+  // Fetch Moravia borders from Supabase
+  useEffect(() => {
+    const fetchBorders = async () => {
+      try {
+        const data = await fetchContinentBorders('Moravia');
+        setBorders(data);
+      } catch (e) {
+        console.error('[MoraviaMap] Failed to fetch borders:', e);
+      }
+    };
+    fetchBorders();
+  }, []);
+
   // Initialize map
   useEffect(() => {
     if (!mapRef.current || mapInstanceRef.current) return;
@@ -146,76 +118,122 @@ export const MoraviaMap: React.FC = () => {
       map.fitBounds(CONTENT_BOUNDS, { padding: [20, 20] });
 
       // Water background covering expanded bounds
-      const waterLayer = L.rectangle(EXPANDED_BOUNDS, {
+      L.rectangle(EXPANDED_BOUNDS, {
         color: '#0a1628',
         fillColor: '#0a1628',
         fillOpacity: 1,
         weight: 0,
       }).addTo(map);
 
-      // Moravia continent outline
-      L.polygon(moraviaOutline, {
-        color: '#4a9a6a',
-        fillColor: '#1a3a2a',
-        fillOpacity: 0.8,
-        weight: 2,
-      }).addTo(map);
+      // Render borders by type
+      borders.forEach((border) => {
+        const fillColor = border.fill_color || '#1a3a2a';
+        const strokeColor = border.stroke_color || '#4a9a6a';
+        const fillOpacity = border.fill_opacity ?? 0.8;
+        const labelX = border.label_x ?? (border.coords[0]?.[1] ?? 0);
+        const labelY = border.label_y ?? (border.coords[0]?.[0] ?? 0);
 
-      // Ecozone layers
-      ecozones.forEach((zone) => {
-        L.polygon(zone.coords, {
-          color: zone.fillColor,
-          fillColor: zone.fillColor,
-          fillOpacity: 0.4,
-          weight: 1,
-          dashArray: '5, 5',
-        }).addTo(map);
+        switch (border.border_type) {
+          case 'continent': {
+            // Main continent outline - filled polygon
+            L.polygon(border.coords, {
+              color: strokeColor,
+              fillColor: fillColor,
+              fillOpacity: fillOpacity,
+              weight: 2,
+            }).addTo(map);
 
-        // Ecozone label
-        L.marker(zone.center, {
-          icon: L.divIcon({
-            className: 'ecozone-label',
-            html: `<div style="font-family: Georgia, serif; color: #6aa85a; font-size: 11px; font-style: italic; text-shadow: 1px 1px 3px rgba(0,0,0,0.8); pointer-events: none; white-space: nowrap;">${zone.name}</div>`,
-            iconSize: [180, 30],
-            iconAnchor: [90, 15],
-          }),
-        }).addTo(map);
+            // Label at label position
+            if (border.label_x != null && border.label_y != null) {
+              L.tooltip({
+                permanent: true,
+                direction: 'center',
+                className: 'continent-label',
+                offset: [0, 0],
+              }).setContent(`
+                <div style="
+                  font-family: Georgia, serif;
+                  color: white;
+                  font-size: 13px;
+                  font-weight: 500;
+                  text-shadow: 1px 1px 3px rgba(0,0,0,0.8);
+                  white-space: nowrap;
+                ">${border.name}</div>
+              `).setLatLng([labelY, labelX]).addTo(map);
+            }
+            break;
+          }
+
+          case 'ecozone': {
+            // Ecozone - filled polygon with dashed stroke, muted italic green label
+            L.polygon(border.coords, {
+              color: strokeColor,
+              fillColor: fillColor,
+              fillOpacity: fillOpacity ?? 0.4,
+              weight: 1,
+              dashArray: '5, 5',
+            }).addTo(map);
+
+            // Ecozone label: muted italic green
+            if (border.label_x != null && border.label_y != null) {
+              L.marker([labelY, labelX], {
+                icon: L.divIcon({
+                  className: 'ecozone-label',
+                  html: `<div style="font-family: Georgia, serif; color: #6aa85a; font-size: 11px; font-style: italic; text-shadow: 1px 1px 3px rgba(0,0,0,0.8); pointer-events: none; white-space: nowrap;">${border.name}</div>`,
+                  iconSize: [180, 30],
+                  iconAnchor: [90, 15],
+                }),
+              }).addTo(map);
+            }
+            break;
+          }
+
+          case 'path': {
+            // Path - dashed polyline, no fill, matching color label
+            L.polyline(border.coords, {
+              color: strokeColor,
+              weight: 3,
+              dashArray: '10, 8',
+              opacity: 0.8,
+            }).addTo(map);
+
+            // Path label: muted italic matching stroke color
+            if (border.label_x != null && border.label_y != null) {
+              L.marker([labelY, labelX], {
+                icon: L.divIcon({
+                  className: 'path-label',
+                  html: `<div style="font-family: Georgia, serif; color: ${strokeColor}; font-size: 10px; font-style: italic; text-shadow: 1px 1px 3px rgba(0,0,0,0.8); white-space: nowrap;">${border.name}</div>`,
+                  iconSize: [200, 30],
+                  iconAnchor: [100, 15],
+                }),
+              }).addTo(map);
+            }
+            break;
+          }
+
+          case 'river': {
+            // River - solid polyline, no fill, matching color label
+            L.polyline(border.coords, {
+              color: strokeColor,
+              weight: 4,
+              opacity: 0.9,
+            }).addTo(map);
+
+            // River label: muted italic matching stroke color, rotated
+            if (border.label_x != null && border.label_y != null) {
+              L.marker([labelY, labelX], {
+                icon: L.divIcon({
+                  className: 'river-label',
+                  html: `<div style="font-family: Georgia, serif; color: ${strokeColor}; font-size: 10px; font-style: italic; text-shadow: 1px 1px 3px rgba(0,0,0,0.8); transform: rotate(90deg); white-space: nowrap;">${border.name}</div>`,
+                  iconSize: [100, 30],
+                  iconAnchor: [50, 15],
+                }),
+              }).addTo(map);
+            }
+            break;
+          }
+        }
       });
-
-      // Path of Shattered Kings
-      L.polyline(pathOfShatteredKings, {
-        color: '#8a7a5a',
-        weight: 3,
-        dashArray: '10, 8',
-        opacity: 0.8,
-      }).addTo(map);
-
-      // Path label
-      L.marker([300, 250], {
-        icon: L.divIcon({
-          className: 'path-label',
-          html: '<div style="font-family: Georgia, serif; color: #8a7a5a; font-size: 10px; font-style: italic; text-shadow: 1px 1px 3px rgba(0,0,0,0.8); white-space: nowrap;">Path of Shattered Kings</div>',
-          iconSize: [200, 30],
-          iconAnchor: [100, 15],
-        }),
-      }).addTo(map);
-
-      // Morava River
-      L.polyline(moravaRiver, {
-        color: '#2a5a8a',
-        weight: 4,
-        opacity: 0.9,
-      }).addTo(map);
-
-      // River label
-      L.marker([85, 250], {
-        icon: L.divIcon({
-          className: 'river-label',
-          html: '<div style="font-family: Georgia, serif; color: #2a5a8a; font-size: 10px; font-style: italic; text-shadow: 1px 1px 3px rgba(0,0,0,0.8); transform: rotate(90deg); white-space: nowrap;">Morava River</div>',
-          iconSize: [100, 30],
-          iconAnchor: [50, 15],
-        }),
-      }).addTo(map);
 
       // Compass rose - bottom LEFT
       const compass = L.control({ position: 'bottomleft' });
@@ -306,7 +324,7 @@ export const MoraviaMap: React.FC = () => {
         mapInstanceRef.current = null;
       }
     };
-  }, [playerColor, locationData, markerPositions]);
+  }, [playerColor, locationData, markerPositions, borders]);
 
   const handleBack = () => {
     window.location.href = '/map';
