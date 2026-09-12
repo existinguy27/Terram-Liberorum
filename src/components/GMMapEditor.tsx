@@ -46,6 +46,7 @@ export const GMMapEditor: React.FC = () => {
   const [locations, setLocations] = useState<Location[]>([]);
   const [borders, setBorders] = useState<ContinentBorder[]>([]);
   const [markerPositions, setMarkerPositions] = useState<Record<string, { x: number; y: number }>>({});
+  const [mapReady, setMapReady] = useState(false);
 
   // UI state
   const [activeTab, setActiveTab] = useState<'locations' | 'borders'>('locations');
@@ -92,15 +93,19 @@ export const GMMapEditor: React.FC = () => {
     fetchData();
   }, []);
 
-  // Fetch borders
+  // Fetch borders for BOTH continents (Moravia + Terram Liberorum)
   useEffect(() => {
     const fetchBorders = async () => {
       try {
-        const data = await fetchContinentBorders('Moravia');
-        console.log('[GMMapEditor] Fetched borders:', data);
-        console.log('[GMMapEditor] Borders count:', data.length);
-        data.forEach(b => console.log('[GMMapEditor] Border:', b.name, b.continent, b.border_type, b.coords?.length, 'coords'));
-        setBorders(data);
+        const [moraviaBorders, worldBorders] = await Promise.all([
+          fetchContinentBorders('Moravia'),
+          fetchContinentBorders('Terram Liberorum'),
+        ]);
+        const allBorders = [...moraviaBorders, ...worldBorders];
+        console.log('[GMMapEditor] borders fetched:', allBorders);
+        console.log('[GMMapEditor] Borders count:', allBorders.length);
+        allBorders.forEach(b => console.log('[GMMapEditor] Border:', b.name, b.continent, b.border_type, b.coords?.length, 'coords'));
+        setBorders(allBorders);
       } catch (e) {
         console.error('[GMMapEditor] Failed to fetch borders:', e);
       }
@@ -167,17 +172,20 @@ export const GMMapEditor: React.FC = () => {
 
     initMap();
 
+    setMapReady(true);
+
     return () => {
       if (mapInstanceRef.current) {
         mapInstanceRef.current.remove();
         mapInstanceRef.current = null;
       }
+      setMapReady(false);
     };
   }, []);
 
   // Render borders and locations on map (reacts to borders/locations/markerPositions changes)
   useEffect(() => {
-    if (!mapInstanceRef.current) return;
+    if (!mapReady) return;
 
     const renderMap = async () => {
       const map = mapInstanceRef.current;
@@ -347,7 +355,7 @@ export const GMMapEditor: React.FC = () => {
       });
     };
     renderMap();
-  }, [borders, locations, markerPositions, editingBorderId, editingBorderCoords, editingLabelX, editingLabelY]);
+  }, [mapReady, borders, locations, markerPositions, editingBorderId, editingBorderCoords, editingLabelX, editingLabelY]);
 
   // Location form handlers
   const handleLocationFormChange = (field: string, value: any) => {

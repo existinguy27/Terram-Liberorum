@@ -49,8 +49,10 @@ export const WorldMap: React.FC = () => {
     const fetchBorders = async () => {
       try {
         const data = await fetchContinentBorders('Terram Liberorum');
+        console.log('[WorldMap] borders fetched:', data);
         // Filter to only continent-type borders for world map
         const continentBorders = data.filter(b => b.border_type === 'continent');
+        console.log('[WorldMap] continent borders:', continentBorders);
         setBorders(continentBorders);
       } catch (e) {
         console.error('[WorldMap] Failed to fetch borders:', e);
