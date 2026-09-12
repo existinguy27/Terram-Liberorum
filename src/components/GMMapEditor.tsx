@@ -97,6 +97,9 @@ export const GMMapEditor: React.FC = () => {
     const fetchBorders = async () => {
       try {
         const data = await fetchContinentBorders('Moravia');
+        console.log('[GMMapEditor] Fetched borders:', data);
+        console.log('[GMMapEditor] Borders count:', data.length);
+        data.forEach(b => console.log('[GMMapEditor] Border:', b.name, b.continent, b.border_type, b.coords?.length, 'coords'));
         setBorders(data);
       } catch (e) {
         console.error('[GMMapEditor] Failed to fetch borders:', e);
@@ -200,9 +203,12 @@ export const GMMapEditor: React.FC = () => {
         const strokeColor = border.stroke_color || '#4a9a6a';
         const fillOpacity = border.fill_opacity ?? 0.8;
 
+        // Database stores coords as [x, y], Leaflet CRS.Simple needs [lat, lng] = [y, x]
+        const leafletCoords = border.coords.map(([x, y]) => [y, x] as [number, number]);
+
         if (border.border_type === 'continent' || border.border_type === 'ecozone') {
           // Polygon
-          const poly = Leaflet.polygon(border.coords, {
+          const poly = Leaflet.polygon(leafletCoords, {
             color: strokeColor,
             fillColor: fillColor,
             fillOpacity: border.border_type === 'ecozone' ? (fillOpacity ?? 0.4) : fillOpacity,
@@ -235,8 +241,8 @@ export const GMMapEditor: React.FC = () => {
 
           // If this border is being edited, add vertex handles
           if (editingBorderId === border.id) {
-            border.coords.forEach((coord, index) => {
-              const handle = Leaflet.circleMarker([coord[0], coord[1]], {
+            leafletCoords.forEach((coord, index) => {
+              const handle = Leaflet.circleMarker(coord, {
                 radius: 6,
                 fillColor: '#e94560',
                 color: '#ffffff',
@@ -277,7 +283,7 @@ export const GMMapEditor: React.FC = () => {
             }
           }
         } else if (border.border_type === 'path') {
-          Leaflet.polyline(border.coords, {
+          Leaflet.polyline(leafletCoords, {
             color: strokeColor,
             weight: 3,
             dashArray: '10, 8',
@@ -295,7 +301,7 @@ export const GMMapEditor: React.FC = () => {
             }).addTo(borderLayer);
           }
         } else if (border.border_type === 'river') {
-          Leaflet.polyline(border.coords, {
+          Leaflet.polyline(leafletCoords, {
             color: strokeColor,
             weight: 4,
             opacity: 0.9,
@@ -487,8 +493,10 @@ export const GMMapEditor: React.FC = () => {
   const handleSaveBorder = async () => {
     if (!editingBorderId || !originalBorder) return;
     try {
+      // Convert from Leaflet [y, x] back to database [x, y] format
+      const dbCoords = editingBorderCoords.map(([y, x]) => [x, y] as [number, number]);
       await updateContinentBorder(editingBorderId, {
-        coords: editingBorderCoords,
+        coords: dbCoords,
         label_x: editingLabelX,
         label_y: editingLabelY,
       });
@@ -525,7 +533,7 @@ export const GMMapEditor: React.FC = () => {
   return (
     <div className="h-full bg-[#0a1628] text-white flex" style={{ '--player-color': '#e94560' }}>
       {/* Left Panel */}
-      <aside className="w-[400px] flex-shrink-0 bg-[#16213e] border-r border-gray-700 flex flex-col">
+      <aside className="w-[380px] flex-shrink-0 bg-[#16213e] border-r border-gray-700 flex flex-col">
         {/* Tab Bar */}
         <div className="flex border-b border-gray-700">
           {['locations', 'borders'].map(tab => (

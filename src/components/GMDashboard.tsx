@@ -39,7 +39,6 @@ type FormState = {
   lore: Partial<Lore>;
   towns: Partial<Town>;
   preview: Record<string, never>;
-  'map-editor': Record<string, never>;
 };
 
 const initialFormState: FormState = {
@@ -51,7 +50,6 @@ const initialFormState: FormState = {
   lore: { title: '', category: '', content: '', visible: true },
   towns: { name: '', region: '', description: '', services: '', notable_npcs: '', current_rumors: '', visible: true },
   preview: {},
-  'map-editor': {},
 };
 
 export const GMDashboard: React.FC = () => {
@@ -464,11 +462,6 @@ export const GMDashboard: React.FC = () => {
                 </div>
               </>
             )}
-            {tab === 'map-editor' && (
-              <>
-                <GMMapEditor />
-              </>
-            )}
             <div className="flex gap-3 pt-4">
               <button type="button" onClick={() => { setShowForm(null); setEditingId(null); }} className="flex-1 py-2 bg-gray-600 hover:bg-gray-500 rounded">Cancel</button>
               <button type="submit" className="flex-1 py-2 bg-[#e94560] hover:bg-[#d63650] rounded font-semibold">{isEditing ? 'Update' : 'Create'}</button>
@@ -527,13 +520,18 @@ export const GMDashboard: React.FC = () => {
 
     if (loading) return <div className="text-center py-8 text-gray-400">Loading...</div>;
 
-    // Preview tab and Map Editor tab have no table - handled by renderForm
-    if (activeTab === 'preview' || activeTab === 'map-editor') {
+    // Preview tab has no table - handled by renderForm
+    if (activeTab === 'preview') {
       return (
         <div className="text-center py-16 text-gray-500">
-          <p className="text-lg">Use the "Add New" button to open the {activeTab === 'preview' ? 'preview panel' : 'map editor'}.</p>
+          <p className="text-lg">Use the "Add New" button to open the preview panel.</p>
         </div>
       );
+    }
+
+    // Map Editor tab - render GMMapEditor directly in content area
+    if (activeTab === 'map-editor') {
+      return <GMMapEditor />;
     }
 
     return (
@@ -618,9 +616,11 @@ export const GMDashboard: React.FC = () => {
 
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-lg font-medium">{TABS.find(t => t.id === activeTab)?.label}</h2>
-          <button onClick={() => resetForm(activeTab)} className="px-4 py-2 bg-[#e94560] hover:bg-[#d63650] rounded font-medium transition-colors">
-            + Add New
-          </button>
+          {activeTab !== 'preview' && activeTab !== 'map-editor' && (
+            <button onClick={() => resetForm(activeTab)} className="px-4 py-2 bg-[#e94560] hover:bg-[#d63650] rounded font-medium transition-colors">
+              + Add New
+            </button>
+          )}
         </div>
 
         {renderList()}

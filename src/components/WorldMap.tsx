@@ -104,7 +104,10 @@ export const WorldMap: React.FC = () => {
         const fillOpacity = border.fill_opacity ?? 0.8;
         const weight = isMoravia ? 3 : 2;
 
-        const polygon = L.polygon(border.coords, {
+        // Database stores coords as [x, y], Leaflet CRS.Simple needs [lat, lng] = [y, x]
+        const leafletCoords = border.coords.map(([x, y]) => [y, x] as [number, number]);
+
+        const polygon = L.polygon(leafletCoords, {
           color: strokeColor,
           fillColor: fillColor,
           fillOpacity: fillOpacity,
